@@ -21,7 +21,11 @@ struct Args {
 
     /// TUN ipv4 address and netmask (optional)
     #[arg(short, long, default_value = "192.168.255.1/24")]
-    ip : String
+    ip : String,
+
+    /// bind local ip and port (optional)
+    #[arg(short, long, default_value = "0.0.0.0:0")]
+    bind : String
 }
 
 #[tokio::main]
@@ -75,7 +79,7 @@ async fn main() {
         }
     });
 
-    let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+    let socket = UdpSocket::bind(args.bind).await.unwrap();
     let r = Arc::new(socket);
     let s = r.clone();
     println!("UDP client listening on {}", r.local_addr().unwrap());
