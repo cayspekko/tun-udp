@@ -16,8 +16,12 @@ const TUN_NAME: &str = "tun0";
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Remote Server and port <server>:<port>
-    #[arg(short, long, index=1)]
+    #[arg(short, long, default_value = "0.0.0.0:0")]
     remote: String,
+
+    /// Server listen mode
+    #[arg(short, long, default_value_t=false)]
+    server: bool,
 
     /// TUN ipv4 address and netmask (optional)
     #[arg(short, long, default_value = "192.168.255.1/24")]
@@ -33,10 +37,25 @@ async fn main() {
     let args = Args::parse();
     println!("remote: {} ip: {}", args.remote, args.ip);
     let net: Ipv4Net = args.ip.parse().unwrap();
-    let remote: SocketAddr = args.remote.to_socket_addrs().unwrap().next().unwrap();
+
+    let socket = UdpSocket::bind(args.bind).await.unwrap();
+    let r = Arc::new(socket);
+    let s = r.clone();
+    println!("UDP client listening on {}", r.local_addr().unwrap());
+    let remote: SocketAddr;
 
     let (tun_tx, mut udp_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel(100);
     let (udp_tx, mut tun_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel(100);
+
+    if args.server {
+        let mut buf = [0u8; 65535];
+        let (nbytes, src) = r.recv_from(&mut buf).await.unwrap();
+        let packet = buf[..nbytes].to_vec();
+        remote = src;
+        udp_tx.send(packet).await.unwrap(); 
+    } else {
+        remote = args.remote.to_socket_addrs().unwrap().next().unwrap();
+    }
 
     let tun = TunBuilder::new()
         .name(TUN_NAME)
@@ -79,11 +98,6 @@ async fn main() {
         }
     });
 
-    let socket = UdpSocket::bind(args.bind).await.unwrap();
-    let r = Arc::new(socket);
-    let s = r.clone();
-    println!("UDP client listening on {}", r.local_addr().unwrap());
-
     let udp_send_task = spawn({
         async move {
             loop {
@@ -103,7 +117,7 @@ async fn main() {
         async move {
             let mut buf = [0u8; 65535];
             loop {
-                let (nbytes, src) = match r.recv_from(&mut buf).await {
+                let nbytes = match r.recv(&mut buf).await {
                     Ok(nbytes) => nbytes,
                     Err(_) => break,
                 };
