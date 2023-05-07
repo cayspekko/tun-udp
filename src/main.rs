@@ -16,7 +16,7 @@ const TUN_NAME: &str = "tun0";
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Remote Server and port <server>:<port>
-    #[arg(short, long)]
+    #[arg(short, long, index=1)]
     remote: String,
 
     /// TUN ipv4 address and netmask (optional)
@@ -48,7 +48,7 @@ async fn main() {
     
     let tun_read_task = spawn({
         async move {
-            let mut buf = [0u8; 1504];
+            let mut buf = [0u8; 65535];
             loop {
                 let nbytes = reader.read(&mut buf).await.unwrap();
                 // println!("reading {} bytes: {:?}", nbytes, &buf[..nbytes]);
@@ -97,9 +97,9 @@ async fn main() {
 
     let udp_recv_task = spawn({
         async move {
-            let mut buf = [0u8; 1504];
+            let mut buf = [0u8; 65535];
             loop {
-                let nbytes = match r.recv(&mut buf).await {
+                let (nbytes, src) = match r.recv_from(&mut buf).await {
                     Ok(nbytes) => nbytes,
                     Err(_) => break,
                 };
