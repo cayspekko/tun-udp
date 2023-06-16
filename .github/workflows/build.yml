@@ -1,0 +1,74 @@
+name: Build and Publish Releases
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build for multiple platforms
+        run: cargo build --release --target x86_64-unknown-linux-gnu && cargo build --release --target aarch64-unknown-linux-gnu
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: binaries
+          path: |
+            target/x86_64-unknown-linux-gnu/release/
+            target/aarch64-unknown-linux-gnu/release/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: binaries
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          body: |
+            Changes in this release:
+            - Add release notes here
+          draft: false
+          prerelease: false
+
+      - name: Upload Binaries
+        id: upload_binaries
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: |
+            target/x86_64-unknown-linux-gnu/release/tun-udp
+            target/aarch64-unknown-linux-gnu/release/tun-udp
+          asset_name: |
+            tun-udp-linux-x86_64
+            tun-udp-linux-aarch64
+          asset_content_type: application/octet-stream
+
