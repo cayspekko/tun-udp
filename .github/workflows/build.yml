@@ -1,78 +1,132 @@
-name: Build and Publish Releases
+# Instruction + template repo: https://github.com/FedericoPonzi/rust-ci
+# Search and replace <YOUR_BINARY_NAME> with your binary name.
+name: CI
 
 on:
+  pull_request:
   push:
     branches:
       - main
+    tags:
+      - 'v*.*.*'
 
 jobs:
-  build:
+  style:
+    name: Check Style
     runs-on: ubuntu-latest
-    strategy: 
-      matrix:
-        target: [ aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, arm-unknown-linux-gnueabi ,x86_64-unknown-linux-gnu ]
-
     steps:
-      - name: Set up Rust
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          components: rustfmt
+          profile: minimal
+          override: true
+
+      - name: cargo fmt -- --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+
+  test:
+    name: Test
+    needs: [style]
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        build: [stable, beta, nightly]
+        include:
+          - build: beta
+            rust: beta
+          - build: nightly
+            rust: nightly
+            benches: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust || 'stable' }}
+          profile: minimal
+          override: true
+
+      - name: Build debug
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: ${{ matrix.features }}
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: ${{ matrix.features }}
+
+      - name: Test all benches
+        if: matrix.benches
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --benches ${{ matrix.features }}
+  deploy:
+    name: deploy
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    strategy: 
+      matrix:
+        target:
+          - arch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf 
+          # - i686-unknown-linux-gnu 
+          # - i686-unknown-linux-musl
+          # - mips-unknown-linux-gnu 
+          # - mips64-unknown-linux-gnuabi64
+          # - mips64el-unknown-linux-gnuabi64
+          # - mipsel-unknown-linux-gnu
+          # - powerpc-unknown-linux-gnu
+          # - powerpc64-unknown-linux-gnu
+          # - powerpc64le-unknown-linux-gnu
+          # - arm-unknown-linux-gnueabi
+          - x86_64-unknown-linux-gnu
+          # - x86_64-unknown-linux-musl]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
           override: true
           target: ${{ matrix.target }}
 
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Build for multiple platforms
-        run: cargo build --release --target x86_64-unknown-linux-gnu && cargo build --release --target aarch64-unknown-linux-gnu
-
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v2
+      - name: Build target
+        uses: actions-rs/cargo@v1
         with:
-          name: binaries
-          path: |
-            target/x86_64-unknown-linux-gnu/release/
-            target/aarch64-unknown-linux-gnu/release/
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v2
+      - name: Package
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../tun-udp-${{ matrix.target }}.tar.gz tun-udp
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        # TODO: if any of the build step fails, the release should be deleted.
         with:
-          name: binaries
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+            files: 'tun-udp*'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release ${{ github.run_number }}
-          body: |
-            Changes in this release:
-            - Add release notes here
-          draft: false
-          prerelease: false
-
-      - name: Upload Binaries
-        id: upload_binaries
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: |
-            target/x86_64-unknown-linux-gnu/release/tun-udp
-            target/aarch64-unknown-linux-gnu/release/tun-udp
-          asset_name: |
-            tun-udp-linux-x86_64
-            tun-udp-linux-aarch64
-          asset_content_type: application/octet-stream
-
