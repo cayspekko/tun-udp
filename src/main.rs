@@ -1,12 +1,12 @@
+use clap::Parser;
+use ipnet::Ipv4Net;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UdpSocket;
-use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::spawn;
 use tokio_tun::TunBuilder;
-use clap::Parser;
-use ipnet::Ipv4Net;
 
 const TUN_NAME: &str = "tun0";
 
@@ -20,16 +20,16 @@ struct Args {
     remote: String,
 
     /// Server listen mode
-    #[arg(short, long, default_value_t=false)]
+    #[arg(short, long, default_value_t = false)]
     server: bool,
 
     /// TUN ipv4 address and netmask (optional)
     #[arg(short, long, default_value = "192.168.255.1/24")]
-    ip : String,
+    ip: String,
 
     /// bind local ip and port (optional)
     #[arg(short, long, default_value = "0.0.0.0:0")]
-    bind : String
+    bind: String,
 }
 
 #[tokio::main]
@@ -52,7 +52,7 @@ async fn main() {
         let (nbytes, src) = r.recv_from(&mut buf).await.unwrap();
         let packet = buf[..nbytes].to_vec();
         remote = src;
-        udp_tx.send(packet).await.unwrap(); 
+        udp_tx.send(packet).await.unwrap();
     } else {
         remote = args.remote.to_socket_addrs().unwrap().next().unwrap();
     }
@@ -66,9 +66,9 @@ async fn main() {
         .up()
         .try_build()
         .unwrap();
-    
+
     let (mut reader, mut writer) = tokio::io::split(tun);
-    
+
     let tun_read_task = spawn({
         async move {
             let mut buf = [0u8; 65535];
@@ -130,5 +130,4 @@ async fn main() {
     });
 
     let _ = tokio::try_join!(tun_read_task, tun_write_task, udp_send_task, udp_recv_task);
-
 }
