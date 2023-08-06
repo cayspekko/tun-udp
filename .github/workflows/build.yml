@@ -85,8 +85,9 @@ jobs:
     strategy: 
       matrix:
         target:
-          - aarch64-unknown-linux-gnu
-          - armv7-unknown-linux-gnueabihf 
+          - aarch64-unknown-linux-musl
+          # - aarch64-unknown-linux-gnu
+          # - armv7-unknown-linux-gnueabihf 
           # - i686-unknown-linux-gnu 
           # - i686-unknown-linux-musl
           # - mips-unknown-linux-gnu 
@@ -96,9 +97,10 @@ jobs:
           # - powerpc-unknown-linux-gnu
           # - powerpc64-unknown-linux-gnu
           # - powerpc64le-unknown-linux-gnu
-          # - arm-unknown-linux-gnueabi
-          - x86_64-unknown-linux-gnu
-          # - x86_64-unknown-linux-musl]
+          # - arm-unknown-linux-gnueabi          
+          - arm-unknown-linux-musl
+          # - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
     steps:
       - name: Checkout
         uses: actions/checkout@v1
